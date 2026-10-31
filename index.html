@@ -1,104 +1,429 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Explorador de archivos</title>
+
+<title>Koditorr Explorer</title>
 
 <style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
 body{
-    font-family: Segoe UI, Arial, sans-serif;
-    margin:20px;
+    height:100vh;
+    background:#1e1e1e;
+    color:#ffffff;
+    font-family:Segoe UI, Arial, sans-serif;
 }
 
-.folder,.file{
-    padding:8px;
+.header{
+    height:60px;
+    background:#252526;
+    display:flex;
+    align-items:center;
+    padding:0 15px;
+    gap:15px;
+    border-bottom:1px solid #333;
+}
+
+.logo{
+    font-size:20px;
+    font-weight:bold;
+}
+
+.search{
+    flex:1;
+}
+
+.search input{
+    width:100%;
+    padding:10px;
+    border:none;
+    border-radius:5px;
+    background:#3c3c3c;
+    color:#fff;
+}
+
+.main{
+    display:flex;
+    height:calc(100vh - 60px);
+}
+
+.sidebar{
+    width:300px;
+    overflow:auto;
+    background:#252526;
+    border-right:1px solid #333;
+}
+
+.content{
+    flex:1;
+    overflow:auto;
+}
+
+.path{
+    padding:15px;
+    border-bottom:1px solid #333;
+    color:#ccc;
+}
+
+.files{
+    padding:10px;
+}
+
+.tree-folder{
+    padding:8px 15px;
     cursor:pointer;
-    border-radius:4px;
 }
 
-.folder:hover,.file:hover{
-    background:#f3f3f3;
+.tree-folder:hover{
+    background:#37373d;
 }
 
 .children{
-    margin-left:25px;
+    padding-left:20px;
     display:none;
 }
 
 .children.open{
     display:block;
 }
+
+.file-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px;
+    cursor:pointer;
+    border-radius:5px;
+    margin-bottom:2px;
+}
+
+.file-row:hover{
+    background:#2d2d30;
+}
+
+.icon{
+    width:30px;
+    text-align:center;
+}
+
+.download-btn{
+
+    margin-left:auto;
+
+    background:#0e639c;
+    border:none;
+    color:white;
+
+    padding:6px 12px;
+    border-radius:4px;
+
+    cursor:pointer;
+    font-size:13px;
+}
+
+.download-btn:hover{
+    background:#1177bb;
+}
+
+@media(max-width:768px){
+
+    .main{
+        flex-direction:column;
+    }
+
+    .sidebar{
+        width:100%;
+        height:250px;
+    }
+}
+
 </style>
 </head>
 <body>
 
-<h2>Repositorio koditorr</h2>
+<div class="header">
 
-<div id="tree"></div>
+    <div class="logo">
+        📂 Koditorr Explorer
+    </div>
+
+    <div class="search">
+        <input
+        type="text"
+        id="searchBox"
+        placeholder="Buscar archivo o carpeta...">
+    </div>
+
+</div>
+
+<div class="main">
+
+    <div class="sidebar">
+
+        <div id="tree"></div>
+
+    </div>
+
+    <div class="content">
+
+        <div class="path" id="path">/</div>
+
+        <div class="files" id="files"></div>
+
+    </div>
+
+</div>
 
 <script>
 
 const USER = "gunner666";
 const REPO = "koditorr";
 
+let currentFiles = [];
+
 async function getContents(path = "") {
-    const response = await fetch(
-        `https://api.github.com/repos/${USER}/${REPO}/contents/${path}`
-    );
+
+    const url =
+    `https://api.github.com/repos/${USER}/${REPO}/contents/${path}`;
+
+    const response = await fetch(url);
+
     return await response.json();
 }
 
-async function buildTree(path, container) {
+function getIcon(name){
 
-    const items = await getContents(path);
+    const ext=name.split('.').pop().toLowerCase();
 
-    items.sort((a,b)=>{
-        if(a.type === b.type){
+    const icons={
+
+        pdf:"📕",
+
+        zip:"🗜️",
+        rar:"🗜️",
+        '7z':"🗜️",
+
+        mp4:"🎬",
+        mkv:"🎬",
+        avi:"🎬",
+        mov:"🎬",
+
+        jpg:"🖼️",
+        jpeg:"🖼️",
+        png:"🖼️",
+        gif:"🖼️",
+        webp:"🖼️",
+
+        mp3:"🎵",
+        wav:"🎵",
+        flac:"🎵",
+
+        txt:"📄",
+
+        doc:"📘",
+        docx:"📘",
+
+        xls:"📗",
+        xlsx:"📗",
+
+        apk:"📦",
+        exe:"⚙️",
+
+        js:"📜",
+        html:"🌐",
+        css:"🎨",
+        py:"🐍"
+    };
+
+    return icons[ext] || "📄";
+}
+
+async function loadFolder(path=""){
+
+    document.getElementById("path").textContent =
+        "/" + path;
+
+    const data = await getContents(path);
+
+    currentFiles = data;
+
+    renderFiles(data);
+}
+
+function renderFiles(files){
+
+    const container =
+        document.getElementById("files");
+
+    container.innerHTML = "";
+
+    files.sort((a,b)=>{
+
+        if(a.type===b.type){
+
             return a.name.localeCompare(b.name);
         }
-        return a.type === "dir" ? -1 : 1;
+
+        return a.type==="dir" ? -1 : 1;
     });
 
-    for(const item of items){
+    files.forEach(item=>{
 
-        if(item.type === "dir"){
+        const row =
+            document.createElement("div");
 
-            const folder = document.createElement("div");
-            folder.className = "folder";
-            folder.textContent = "📁 " + item.name;
+        row.className = "file-row";
 
-            const children = document.createElement("div");
-            children.className = "children";
+        if(item.type==="dir"){
 
-            folder.addEventListener("click", async ()=>{
+            row.innerHTML = `
+            <div class="icon">📁</div>
+            <div>${item.name}</div>
+            `;
 
-                if(children.childElementCount === 0){
-                    await buildTree(item.path, children);
-                }
+            row.ondblclick = ()=>{
 
-                children.classList.toggle("open");
+                loadFolder(item.path);
+            };
+
+        }else{
+
+            row.innerHTML = `
+            <div class="icon">
+                ${getIcon(item.name)}
+            </div>
+
+            <div style="flex:1">
+                ${item.name}
+            </div>
+
+            <button class="download-btn">
+                ⬇ Descargar
+            </button>
+            `;
+
+            row.ondblclick = ()=>{
+
+                window.open(
+                    item.html_url,
+                    "_blank"
+                );
+            };
+
+            row.querySelector(".download-btn")
+            .addEventListener("click",(e)=>{
+
+                e.stopPropagation();
+
+                const a =
+                    document.createElement("a");
+
+                a.href =
+                    item.download_url;
+
+                a.download =
+                    item.name;
+
+                document.body
+                    .appendChild(a);
+
+                a.click();
+
+                a.remove();
             });
-
-            container.appendChild(folder);
-            container.appendChild(children);
-
-        } else {
-
-            const file = document.createElement("div");
-            file.className = "file";
-            file.textContent = "📄 " + item.name;
-
-            file.addEventListener("click", ()=>{
-                window.open(item.html_url, "_blank");
-            });
-
-            container.appendChild(file);
         }
+
+        container.appendChild(row);
+
+    });
+}
+
+async function createTree(path,parent){
+
+    const data =
+        await getContents(path);
+
+    const dirs =
+        data.filter(
+            x => x.type==="dir"
+        );
+
+    for(let dir of dirs){
+
+        const folder =
+            document.createElement("div");
+
+        folder.className =
+            "tree-folder";
+
+        folder.textContent =
+            "📁 " + dir.name;
+
+        const children =
+            document.createElement("div");
+
+        children.className =
+            "children";
+
+        folder.onclick =
+        async ()=>{
+
+            loadFolder(dir.path);
+
+            if(
+                children.childNodes.length===0
+            ){
+
+                await createTree(
+                    dir.path,
+                    children
+                );
+            }
+
+            children.classList
+            .toggle("open");
+        };
+
+        parent.appendChild(folder);
+        parent.appendChild(children);
     }
 }
 
-buildTree("", document.getElementById("tree"));
+document
+.getElementById("searchBox")
+.addEventListener("input",(e)=>{
+
+    const text =
+        e.target.value
+        .toLowerCase();
+
+    const filtered =
+        currentFiles.filter(f=>
+            f.name
+             .toLowerCase()
+             .includes(text)
+        );
+
+    renderFiles(filtered);
+});
+
+(async()=>{
+
+    await createTree(
+        "",
+        document.getElementById("tree")
+    );
+
+    await loadFolder("");
+
+})();
 
 </script>
 
