@@ -1,139 +1,105 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Explorador de GitHub</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 40px; background: #f6f8fa; color: #24292f; }
-        .container { max-width: 60px; max-width: 800px; margin: 0 auto; background: white; padding: 24px; border: 1px solid #d0d7de; border-radius: 6px; }
-        .input-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        input { flex: 1; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px; }
-        button { padding: 8px 16px; background: #2fa84f; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
-        button:hover { background: #2c974b; }
-        .folder { margin-left: 16px; padding-left: 8px; border-left: 1px dotted #d0d7de; }
-        summary { cursor: pointer; padding: 4px 0; font-weight: 600; list-style: none; }
-        summary::-webkit-details-marker { display: none; }
-        summary::before { content: "📁 "; }
-        details[open] > summary::before { content: "📂 "; }
-        .file { display: block; margin-left: 16px; padding: 4px 0; color: #0969da; text-decoration: none; }
-        .file::before { content: "📄 "; }
-        .file:hover { text-decoration: underline; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explorador de archivos</title>
+
+<style>
+body{
+    font-family: Segoe UI, Arial, sans-serif;
+    margin:20px;
+}
+
+.folder,.file{
+    padding:8px;
+    cursor:pointer;
+    border-radius:4px;
+}
+
+.folder:hover,.file:hover{
+    background:#f3f3f3;
+}
+
+.children{
+    margin-left:25px;
+    display:none;
+}
+
+.children.open{
+    display:block;
+}
+</style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Explorador de Archivos de GitHub</h2>
-    <div class="input-group">
-        <input type="text" id="repoUrl" placeholder="Introduce la URL del repositorio (ej: https://github.com)" value="">
-        <button onclick="cargarRepositorio()">Cargar Árbol</button>
-    </div>
-    <div id="tree"></div>
-</div>
+<h2>Repositorio koditorr</h2>
+
+<div id="tree"></div>
 
 <script>
-async function cargarRepositorio() {
-    const urlInput = document.getElementById('repoUrl').value.trim();
-    const treeContainer = document.getElementById('tree');
-    treeContainer.innerHTML = 'Cargando...';
 
-    // Extraer usuario y repositorio de la URL
-    const match = urlInput.match(/github\.com\/([^/]+)\/([^/]+)/);
-    if (!match) {
-        treeContainer.innerHTML = '<span style="color:red;">URL de GitHub no válida</span>';
-        return;
-    }
+const USER = "gunner666";
+const REPO = "koditorr";
 
-    const [_, user, repo] = match;
-    // Limpiar el nombre del repo si termina en .git
-    const cleanRepo = repo.replace('.git', ''); 
-
-    try {
-        // Obtenemos de forma recursiva toda la estructura de la rama principal (main o master)
-        const response = await fetch(`https://github.com{user}/${cleanRepo}/git/trees/HEAD?recursive=1`);
-        if (!response.ok) throw new Error('No se pudo obtener el repositorio. Verifica que sea público.');
-        
-        const data = await response.json();
-        treeContainer.innerHTML = '';
-        
-        // Construir y renderizar la estructura
-        const root = construirEstructura(data.tree, user, cleanRepo);
-        renderizarArbol(root, treeContainer);
-    } catch (error) {
-        treeContainer.innerHTML = `<span style="color:red;">Error: ${error.message}</span>`;
-    }
+async function getContents(path = "") {
+    const response = await fetch(
+        `https://api.github.com/repos/${USER}/${REPO}/contents/${path}`
+    );
+    return await response.json();
 }
 
-function construirEstructura(listaArchivos, user, repo) {
-    const root = { root: { nombre: 'root', tipo: 'dir', hijos: {} } };
-    
-    listaArchivos.forEach(item => {
-        const partes = item.path.split('/');
-        let actual = root.root;
-        
-        partes.forEach((parte, index) => {
-            const esUltimo = index === partes.length - 1;
-            
-            if (!actual.hijos) actual.hijos = {};
-            
-            if (!actual.hijos[parte]) {
-                if (esUltimo && item.type === 'blob') {
-                    // Es un archivo, generamos su enlace directo de visualización en GitHub
-                    actual.hijos[parte] = {
-                        nombre: parte,
-                        tipo: 'file',
-                        url: `https://github.com{user}/${repo}/blob/HEAD/${item.path}`
-                    };
-                } else {
-                    // Es una carpeta
-                    actual.hijos[parte] = {
-                        nombre: parte,
-                        tipo: 'dir',
-                        hijos: {}
-                    };
-                }
-            }
-            actual = actual.hijos[parte];
-        });
-    });
-    return root.root;
-}
+async function buildTree(path, container) {
 
-function renderizarArbol(nodo, contenedor) {
-    if (!nodo.hijos) return;
+    const items = await getContents(path);
 
-    // Ordenar para mostrar primero las carpetas y luego los archivos
-    const clavesOrdenadas = Object.keys(nodo.hijos).sort((a, b) => {
-        if (nodo.hijos[a].tipo === nodo.hijos[b].tipo) return a.localeCompare(b);
-        return nodo.hijos[a].tipo === 'dir' ? -1 : 1;
-    });
-
-    clavesOrdenadas.forEach(clave => {
-        const hijo = nodo.hijos[clave];
-        
-        if (hijo.tipo === 'dir') {
-            const detalles = document.createElement('details');
-            const summary = document.createElement('summary');
-            summary.textContent = hijo.nombre;
-            detalles.appendChild(summary);
-            
-            const subContenedor = document.createElement('div');
-            subContenedor.className = 'folder';
-            detalles.appendChild(subContenedor);
-            
-            renderizarArbol(hijo, subContenedor);
-            contenedor.appendChild(detalles);
-        } else {
-            const enlace = document.createElement('a');
-            enlace.className = 'file';
-            enlace.href = hijo.url;
-            enlace.target = '_blank'; // Abre el archivo en una pestaña nueva
-            enlace.textContent = hijo.nombre;
-            contenedor.appendChild(enlace);
+    items.sort((a,b)=>{
+        if(a.type === b.type){
+            return a.name.localeCompare(b.name);
         }
+        return a.type === "dir" ? -1 : 1;
     });
+
+    for(const item of items){
+
+        if(item.type === "dir"){
+
+            const folder = document.createElement("div");
+            folder.className = "folder";
+            folder.textContent = "📁 " + item.name;
+
+            const children = document.createElement("div");
+            children.className = "children";
+
+            folder.addEventListener("click", async ()=>{
+
+                if(children.childElementCount === 0){
+                    await buildTree(item.path, children);
+                }
+
+                children.classList.toggle("open");
+            });
+
+            container.appendChild(folder);
+            container.appendChild(children);
+
+        } else {
+
+            const file = document.createElement("div");
+            file.className = "file";
+            file.textContent = "📄 " + item.name;
+
+            file.addEventListener("click", ()=>{
+                window.open(item.html_url, "_blank");
+            });
+
+            container.appendChild(file);
+        }
+    }
 }
+
+buildTree("", document.getElementById("tree"));
+
 </script>
 
 </body>
